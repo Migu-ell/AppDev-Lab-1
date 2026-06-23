@@ -5,15 +5,18 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { supabase } from '../../lib/supabase';
-import TaskForm from '../../components/TaskForm';
 import TaskItem, { type Task } from '../../components/TaskItem';
+import AddTaskModal from '../../components/AddTaskModal';
 
 export default function App() {
-  const [task, setTask] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
 
   // ── Load ────────────────────────────────────────────────────────────────────
   async function loadTasks() {
@@ -22,7 +25,11 @@ export default function App() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data) setTasks(data as Task[]);
+    if (error) {
+      Toast.show({ type: 'error', text1: 'Failed to load tasks', text2: error.message });
+    } else if (data) {
+      setTasks(data as Task[]);
+    }
     setLoading(false);
   }
 
@@ -30,16 +37,18 @@ export default function App() {
     loadTasks();
   }, []);
 
-  // ── Add ─────────────────────────────────────────────────────────────────────
-  async function addTask() {
-    if (task.trim() === '') return;
+  // ── Add (modal submit) ───────────────────────────────────────────────────────
+  async function handleSubmitTask(title: string) {
     const { error } = await supabase
       .from('tasks')
-      .insert({ title: task.trim(), completed: false });
+      .insert({ title, completed: false });
 
-    if (!error) {
-      setTask('');
+    if (error) {
+      Toast.show({ type: 'error', text1: 'Could not add task', text2: error.message });
+    } else {
+      setModalVisible(false);
       await loadTasks();
+      Toast.show({ type: 'success', text1: 'Task added!' });
     }
   }
 
@@ -50,7 +59,11 @@ export default function App() {
       .update({ completed: !item.completed })
       .eq('id', item.id);
 
-    if (!error) await loadTasks();
+    if (error) {
+      Toast.show({ type: 'error', text1: 'Could not update task', text2: error.message });
+    } else {
+      await loadTasks();
+    }
   }
 
   // ── Delete ──────────────────────────────────────────────────────────────────
@@ -60,7 +73,12 @@ export default function App() {
       .delete()
       .eq('id', id);
 
-    if (!error) await loadTasks();
+    if (error) {
+      Toast.show({ type: 'error', text1: 'Could not delete task', text2: error.message });
+    } else {
+      await loadTasks();
+      Toast.show({ type: 'success', text1: 'Task deleted' });
+    }
   }
 
   // ── UI ───────────────────────────────────────────────────────────────────────
@@ -69,8 +87,6 @@ export default function App() {
       <View style={headerStyles.header}>
         <Text style={headerStyles.title}>TaskFlow</Text>
       </View>
-
-      <TaskForm task={task} setTask={setTask} onAdd={addTask} />
 
       {loading ? (
         <ActivityIndicator size="large" color="#2E5BBA" style={{ marginTop: 40 }} />
@@ -82,10 +98,25 @@ export default function App() {
             <TaskItem item={item} onToggle={toggleTask} onDelete={deleteTask} />
           )}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No tasks yet. Add one above!</Text>
+            <Text style={styles.emptyText}>No tasks yet. Tap + to add one!</Text>
           }
         />
       )}
+
+      {/* Floating action button */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.85}
+      >
+        <MaterialIcons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      <AddTaskModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSubmit={handleSubmitTask}
+      />
     </View>
   );
 }
@@ -104,4 +135,20 @@ const headerStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 20, backgroundColor: '#fff' },
   emptyText: { textAlign: 'center', color: '#aaa', marginTop: 40, fontSize: 15 },
+  fab: {
+    position: 'absolute',
+    bottom: 36,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#2E5BBA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#2E5BBA',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
 });
